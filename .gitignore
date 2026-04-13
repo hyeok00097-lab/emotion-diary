@@ -2,4 +2,5 @@
 api_keys.json
 __pycache__/
 *.pyc
-emonote.db
+emonote.db.cache 
+python 
