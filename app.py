@@ -87,7 +87,9 @@ def analyze():
             final_scores   = reviewed.get("scores", NLP_SCORE_TEMPLATE[final_dominant])
 
         # ── 파인튜닝 학습 데이터 저장 ─────────────────────────────────────────
-        save_training_sample(combined_text, nlp_dominant, nlp_confidence, final_dominant)
+        # 저장 조건: LLM이 수정했거나(불일치) / KoELECTRA 신뢰도 95% 미만(애매한 케이스)
+        if nlp_dominant != final_dominant or nlp_confidence < 0.95:
+            save_training_sample(combined_text, nlp_dominant, nlp_confidence, final_dominant)
 
         # ── Step 3: Spotify + Google Books 병렬 조회 ─────────────────────────
         book_title  = reviewed.get("book_title", "")
