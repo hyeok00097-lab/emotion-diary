@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Emonote</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;600&family=Noto+Sans+KR:wght@300;400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<div class="app">
+  <h1>Emonote</h1>
+
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('write')">일기 쓰기</button>
+    <button class="tab" onclick="switchTab('calendar')">감정 달력</button>
+    <button class="tab" onclick="switchTab('stats')">감정 통계</button>
+  </div>
+
+  <!-- ── 일기 쓰기 탭 ──────────────────────────────────────── -->
+  <div class="screen active" id="screen-write">
+    <p class="date-label" id="today-label"></p>
+
+    <div id="stf-write-section">
+      <div class="stf-container">
+        <!-- S: Situation -->
+        <div class="stf-step">
+          <div class="stf-label">
+            <span class="stf-badge">S</span>
+            상황
+            <span class="stf-hint">오늘 어떤 일이 있었나요?</span>
+          </div>
+          <textarea
+            id="situation"
+            placeholder="오늘 겪었던 상황이나 사건을 간단히 적어보세요."
+            rows="3"
+          ></textarea>
+        </div>
+
+        <!-- T: Thought -->
+        <div class="stf-step">
+          <div class="stf-label">
+            <span class="stf-badge">T</span>
+            생각
+            <span class="stf-hint">그 순간 어떤 생각이 들었나요?</span>
+          </div>
+          <textarea
+            id="thought"
+            placeholder="그 상황에서 자동으로 떠오른 생각이나 해석을 적어보세요."
+            rows="3"
+          ></textarea>
+        </div>
+
+        <!-- F: Feeling -->
+        <div class="stf-step">
+          <div class="stf-label">
+            <span class="stf-badge">F</span>
+            감정
+            <span class="stf-hint">지금 느끼는 감정은 무엇인가요?</span>
+          </div>
+          <textarea
+            id="feeling"
+            placeholder="지금 느끼는 감정을 솔직하게 표현해보세요. 복합적이어도 괜찮아요."
+            rows="3"
+          ></textarea>
+        </div>
+      </div>
+
+      <button class="btn primary" id="analyze-btn" onclick="analyzeDiary()">감정 분석하기</button>
+    </div>
+
+    <div id="diary-display" class="diary-display" style="display:none">
+      <div class="diary-display-card">
+        <div class="diary-display-label">오늘의 일기</div>
+        <div class="diary-display-text" id="diary-text-content"></div>
+      </div>
+      <button class="btn" onclick="resetToSTF()">다시 작성하기</button>
+    </div>
+
+    <div id="result-area"></div>
+  </div>
+
+  <!-- ── 감정 달력 탭 ──────────────────────────────────────── -->
+  <div class="screen" id="screen-calendar">
+    <div class="cal-header">
+      <button class="cal-nav" onclick="changeMonth(-1)">◀</button>
+      <span class="cal-title" id="cal-title"></span>
+      <button class="cal-nav" onclick="changeMonth(1)">▶</button>
+    </div>
+    <div class="cal-grid" id="cal-grid"></div>
+    <div class="legend" id="cal-legend"></div>
+  </div>
+
+  <!-- ── 감정 통계 탭 ──────────────────────────────────────── -->
+  <div class="screen" id="screen-stats">
+    <div id="stats-content"></div>
+  </div>
+</div>
+
+<!-- ── 날짜 상세 모달 ──────────────────────────────────────── -->
+<div class="modal-overlay" id="modal-overlay" onclick="closeModal(event)">
+  <div class="modal">
+    <button class="modal-close"
+      onclick="document.getElementById('modal-overlay').classList.remove('open')">✕</button>
+    <div class="modal-date" id="modal-date"></div>
+    <div id="modal-dominant"></div>
+    <div id="modal-stf"></div>
+    <hr class="modal-divider">
+    <div class="modal-empathy" id="modal-empathy"></div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
