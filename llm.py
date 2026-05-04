@@ -23,6 +23,67 @@ def _usage(message) -> dict:
     }
 
 
+# ── JSON 파싱 재시도 헬퍼 ─────────────────────────────────────────────────────
+def _call_with_retry(
+    client: anthropic.Anthropic,
+    prompt: str,
+    max_tokens: int,
+    label: str,
+) -> tuple[dict, dict]:
+    """
+    Claude API 호출 후 JSON 파싱을 최대 3회 시도 (최초 1회 + 재시도 2회).
+
+    재시도 전략:
+      - 실패한 Claude 응답을 assistant 턴으로 넣어 멀티턴 구성
+      - "JSON만 출력" 강조 메시지를 user 턴에 추가해 재요청
+      - 3회 모두 실패하면 ValueError 발생 → app.py의 except로 전파
+
+    Args:
+        client:     사용할 Anthropic 클라이언트 (Key1 또는 Key2)
+        prompt:     최초 요청 프롬프트
+        max_tokens: 최대 출력 토큰 수
+        label:      로그 식별자 (예: "LLM단독/Key1")
+
+    Returns:
+        (파싱된 dict, 토큰 사용량 dict) — 마지막 성공 시도 기준
+    """
+    MAX_ATTEMPTS = 3
+    messages = [{"role": "user", "content": prompt}]
+
+    for attempt in range(MAX_ATTEMPTS):
+        message = client.messages.create(
+            model="claude-opus-4-5",
+            max_tokens=max_tokens,
+            messages=messages,
+        )
+        usage = _usage(message)
+        # 마크다운 코드블록 제거 후 양쪽 공백 정리
+        raw = message.content[0].text.strip().replace("```json", "").replace("```", "").strip()
+        print(f"[{label}] 시도 {attempt + 1}/{MAX_ATTEMPTS} | "
+              f"토큰: 입력={usage['input_tokens']}, 출력={usage['output_tokens']}")
+
+        try:
+            return json.loads(raw), usage
+        except json.JSONDecodeError as e:
+            print(f"[{label}] JSON 파싱 실패 (시도 {attempt + 1}/{MAX_ATTEMPTS}): {e}")
+            print(f"[{label}] 응답 앞 200자: {raw[:200]}")
+
+            if attempt < MAX_ATTEMPTS - 1:
+                # 멀티턴: 실패한 응답을 assistant 턴으로 추가하고,
+                # 순수 JSON만 재출력하도록 user 턴에 강조 메시지 삽입
+                messages.append({"role": "assistant", "content": message.content[0].text})
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        "응답에 JSON 외 텍스트가 포함되어 있거나 JSON이 완성되지 않았습니다. "
+                        "반드시 유효한 JSON만, 설명·마크다운·추가 문장 없이 바로 출력하세요. "
+                        "첫 글자는 { 이어야 합니다."
+                    ),
+                })
+
+    raise ValueError(f"[{label}] JSON 파싱 {MAX_ATTEMPTS}회 모두 실패")
+
+
 # ── LLM 단독 분석 (NLP 없이 Claude가 전부 처리) ──────────────────────────────
 def llm_only_analyze(
     situation: str, thought: str, feeling: str,
@@ -30,7 +91,9 @@ def llm_only_analyze(
     """
     KoELECTRA 없이 LLM이 감정 분류부터 추천까지 전부 수행.
     토큰 사용량 비교 전용 — 결과는 DB에 저장하지 않음.
-    반환: (result_dict, token_usage_dict)
+
+    Returns:
+        (result_dict, token_usage_dict)
     """
     prompt = f"""당신은 감정 일기 분석 전문가입니다.
 
@@ -40,8 +103,8 @@ def llm_only_analyze(
 감정(Feeling):   {feeling}
 
 위 STF 기록을 분석하여 아래 8가지 감정 중 가장 지배적인 하나를 선택하고,
-각 감정의 비율(합계=100), 감정 요약, 공감, 도서 추천을 JSON으로만 반환하세요.
-다른 텍스트 없이 JSON만 출력하세요.
+각 감정의 비율(합계=100), 공감, 도서 추천을 JSON으로만 반환하세요.
+다른 텍스트 없이 JSON만 출력하세요. 첫 글자는 {{ 이어야 합니다.
 
 감정 8종: joy(기쁨), excitement(설렘), neutral(평범함), surprise(놀라움),
           disgust(불쾌함), fear(두려움), sadness(슬픔), anger(분노)
@@ -57,7 +120,6 @@ def llm_only_analyze(
   "scores": {{"joy":정수,"excitement":정수,"neutral":정수,"surprise":정수,
               "disgust":정수,"fear":정수,"sadness":정수,"anger":정수}},
   "diary_text": "위 지침에 따라 STF를 1인칭 구어체 일기로 재작성 (2~4문장, STF 구조 노출 금지)",
-  "summary": "STF 기록 기반 2문장 이내 감정 요약",
   "empathy": "감정을 구체적으로 인정하는 따뜻한 공감 2~3문장",
   "book_title": "이 감정 상태에 어울리는 한국 소설 또는 에세이 제목",
   "book_author": "저자명"
@@ -65,15 +127,7 @@ def llm_only_analyze(
 
 scores 합계 = 100"""
 
-    message = _client1().messages.create(
-        model="claude-opus-4-5",
-        max_tokens=500,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    usage = _usage(message)
-    raw   = message.content[0].text.strip().replace("```json", "").replace("```", "").strip()
-    print(f"[LLM단독/Key1] 토큰: 입력={usage['input_tokens']}, 출력={usage['output_tokens']}")
-    return json.loads(raw), usage
+    return _call_with_retry(_client1(), prompt, max_tokens=1000, label="LLM단독/Key1")
 
 
 # ── LLM+NLP 검토 (NLP 결과를 LLM이 검증·보완) ────────────────────────────────
@@ -82,10 +136,12 @@ def llm_review_and_generate(
     nlp_dominant: str, nlp_scores: dict,
 ) -> tuple[dict, dict]:
     """
-    STF + NLP 결과를 받아 LLM이 검토하고 감정 요약·공감·도서 추천을 반환.
-      - NLP 맞으면: summary/empathy/book 생성 (토큰 절약)
-      - NLP 틀리면: 감정 재분류 + summary/empathy/book 생성
-    반환: (result_dict, token_usage_dict)
+    STF + NLP 결과를 받아 LLM이 검토하고 공감·도서 추천을 반환.
+      - NLP 맞으면: nlp_ok=true, empathy/diary_text/book 생성 (토큰 절약)
+      - NLP 틀리면: nlp_ok=false, 감정 재분류 + empathy/diary_text/book 생성
+
+    Returns:
+        (result_dict, token_usage_dict)
     """
     scores_str = (
         ", ".join(f"{EN_TO_KO[k]}:{v}%" for k, v in nlp_scores.items())
@@ -99,21 +155,14 @@ STF: 상황={situation} / 생각={thought} / 감정={feeling}
 NLP결과: {EN_TO_KO[nlp_dominant]}({nlp_dominant}), 점수={scores_str}
 
 NLP가 맞으면 nlp_ok:true, 틀리면 nlp_ok:false로 재분류.
+다른 텍스트 없이 JSON만 출력하세요. 첫 글자는 {{ 이어야 합니다.
 
 [diary_text 작성 지침] 1인칭 구어체, "오늘 ~했다" 형식, 2~4문장, STF 구조 노출 금지.
 
-JSON만 반환:
-맞을때: {{"nlp_ok":true,"diary_text":"위 지침대로 작성한 1인칭 구어체 일기 (2~4문장)","summary":"...","empathy":"...","book_title":"...","book_author":"..."}}
-틀릴때: {{"nlp_ok":false,"dominant":"반드시 영문키(joy/excitement/neutral/surprise/disgust/fear/sadness/anger 중 하나)","scores":{{"joy":0,...}},"diary_text":"위 지침대로 작성한 1인칭 구어체 일기 (2~4문장)","summary":"...","empathy":"...","book_title":"...","book_author":"..."}}"""
-    message = _client2().messages.create(
-        model="claude-opus-4-5",
-        max_tokens=500,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    usage = _usage(message)
-    raw   = message.content[0].text.strip().replace("```json", "").replace("```", "").strip()
-    print(f"[LLM+NLP/Key2] 토큰: 입력={usage['input_tokens']}, 출력={usage['output_tokens']}")
-    return json.loads(raw), usage
+맞을때: {{"nlp_ok":true,"diary_text":"위 지침대로 작성한 1인칭 구어체 일기 (2~4문장)","empathy":"...","book_title":"...","book_author":"..."}}
+틀릴때: {{"nlp_ok":false,"dominant":"반드시 영문키(joy/excitement/neutral/surprise/disgust/fear/sadness/anger 중 하나)","scores":{{"joy":0,...}},"diary_text":"위 지침대로 작성한 1인칭 구어체 일기 (2~4문장)","empathy":"...","book_title":"...","book_author":"..."}}"""
+
+    return _call_with_retry(_client2(), prompt, max_tokens=1000, label="LLM+NLP/Key2")
 
 
 # ── 주간 통계용 도서 추천 ────────────────────────────────────────────────────

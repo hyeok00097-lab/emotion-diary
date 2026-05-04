@@ -382,10 +382,41 @@ textarea::placeholder { font-family: 'Noto Sans KR', sans-serif; color: #C5C4BC;
 /* ─── Weekly Stats ──────────────────────────────────────────────── */
 .stats-section { margin-bottom: 1.5rem; }
 .section-label { font-size: 13px; color: var(--muted); margin-bottom: .75rem; }
-.week-bars { display: flex; align-items: flex-end; gap: 6px; height: 90px; }
-.w-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.week-bars { display: flex; align-items: flex-end; gap: 6px; min-height: 110px; }
+.w-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.w-score { font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; line-height: 1; }
+.w-bar-wrap { position: relative; width: 100%; display: flex; flex-direction: column; align-items: center; }
 .w-bar { width: 100%; border-radius: 4px 4px 0 0; min-height: 4px; transition: height .5s; }
 .w-label { font-size: 11px; color: var(--muted); }
+
+/* 주간 바 툴팁 */
+.w-tooltip {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  box-shadow: 0 4px 12px rgba(0,0,0,.1);
+  white-space: nowrap;
+  z-index: 10;
+  pointer-events: none;
+}
+.w-bar-wrap:hover .w-tooltip { display: block; }
+.w-tip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text);
+  line-height: 1.7;
+}
+.w-tip-row b { color: var(--text); font-weight: 600; margin-left: auto; padding-left: 8px; }
+.w-tip-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+
 .week-summary {
   margin-top: 1rem; padding: 1rem;
   background: var(--card); border: 1px solid var(--border);
@@ -394,6 +425,12 @@ textarea::placeholder { font-family: 'Noto Sans KR', sans-serif; color: #C5C4BC;
 .book-section { margin-top: .75rem; }
 .book-section-label { font-size: 12px; font-weight: 500; color: var(--muted); margin-bottom: 8px; }
 .book-card-stats { display: flex; gap: 12px; align-items: flex-start; padding: 12px; background: #F7F6F1; border-radius: 10px; }
+/* 주간 통계 도서 설명: 말줄임 없이 전체 표시 */
+.book-card-stats .book-desc {
+  display: block;
+  -webkit-line-clamp: unset;
+  overflow: visible;
+}
 .book-pending {
   padding: 12px; background: #F7F6F1; border-radius: 10px;
   font-size: 12px; color: var(--muted); text-align: center; line-height: 1.7;

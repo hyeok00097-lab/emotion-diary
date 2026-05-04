@@ -136,7 +136,6 @@ def analyze():
             **final_scores,
             "dominant":         final_dominant,
             "diary_text":       reviewed.get("diary_text", ""),
-            "summary":          reviewed.get("summary", ""),
             "empathy":          reviewed.get("empathy", ""),
             "via_nlp":          nlp_ok,
             "nlp_confidence":   round(nlp_confidence * 100, 1),

@@ -130,6 +130,12 @@ function slideNav(dir) { slideTo(_sliderIdx + dir); }
 function renderResult(r) {
   const color = EMOTIONS[r.dominant]?.color || '#888';
 
+  /* 유사도 콘솔 로그 (UI 미표시) */
+  if (r.similarity) {
+    const { dominant_match, score_similarity_pct } = r.similarity;
+    console.log(`[유사도] dominant_match=${dominant_match} / cosine=${score_similarity_pct}%`);
+  }
+
   /* 배지 */
   let badge = '';
   if (r.via_nlp === true)
@@ -139,7 +145,7 @@ function renderResult(r) {
   else
     badge = `<span class="badge badge-llm">LLM 분석</span>`;
 
-  /* ── Card 1: 감정 분석 ── */
+  /* ── Card 1: 감정 분석 + 공감 메시지 ── */
   const bars = Object.entries(EMOTIONS).map(([k, em]) => `
     <div class="emo-row">
       <span class="emo-name">${em.label}</span>
@@ -147,30 +153,15 @@ function renderResult(r) {
       <span class="bar-pct">${(Math.round((r[k] || 0) * 10) / 10).toFixed(1)}%</span>
     </div>`).join('');
 
-  /* 유사도 */
-  let simHtml = '';
-  if (r.similarity) {
-    const pct   = r.similarity.score_similarity_pct;
-    const match = r.similarity.dominant_match;
-    simHtml = `
-      <div class="sim-row">
-        <span class="sim-label">LLM 단독 vs NLP+LLM 유사도</span>
-        <span class="sim-pct">${pct}%</span>
-        <span class="sim-tag ${match ? 'match' : 'diff'}">${match ? '주요 감정 일치' : '주요 감정 상이'}</span>
-      </div>`;
-  }
-
   const card1 = `
     <div class="slider-card">
       <div class="card-title">감정 분석 ${badge}</div>
-      ${bars}
-      ${r.summary ? `<div class="summary-text">${r.summary}</div>` : ''}
-      ${simHtml}
       ${r.empathy ? `
-      <div class="empathy-box" style="margin-top:.85rem">
+      <div class="empathy-box" style="margin-bottom:.85rem">
         <div class="empathy-label">💜 공감 메시지</div>
         <div class="empathy-text">${r.empathy}</div>
       </div>` : ''}
+      ${bars}
     </div>`;
 
   /* ── Card 2: 음악 추천 ── */
@@ -198,42 +189,13 @@ function renderResult(r) {
       </div>`;
   }
 
-  /* ── Card 3: 도서 추천 ── */
+  /* ── Card 3: 명상 가이드 ── */
   let card3;
-  if (r.book_info && r.book_info.title) {
-    const b = r.book_info;
-    const meta = [b.publisher, b.published ? b.published + '년' : '', b.pages ? b.pages + 'p' : '']
-      .filter(Boolean).join(' · ');
-    card3 = `
-      <div class="slider-card">
-        <div class="card-title">📚 감정 기반 추천 도서</div>
-        <div class="rec">
-          <div class="book-card">
-            ${b.thumbnail ? `<img src="${b.thumbnail}" class="book-thumb" onerror="this.style.display='none'">` : ''}
-            <div class="book-info">
-              <div class="book-title">${b.title}</div>
-              <div class="book-author">${b.author || ''}</div>
-              ${meta ? `<div class="book-meta">${meta}</div>` : ''}
-              ${b.description ? `<div class="book-desc">${b.description}</div>` : ''}
-            </div>
-          </div>
-        </div>
-      </div>`;
-  } else {
-    card3 = `
-      <div class="slider-card">
-        <div class="card-title">📚 감정 기반 추천 도서</div>
-        <div class="empty-state" style="padding:2rem 0">추천 도서를 찾지 못했어요.</div>
-      </div>`;
-  }
-
-  /* ── Card 4: 명상 가이드 ── */
-  let card4;
   if (r.meditation) {
     const m     = r.meditation;
     const steps = m.steps.map(s => `<li>${s}</li>`).join('');
     const music = _randomMedMusic();
-    card4 = `
+    card3 = `
       <div class="slider-card">
         <div class="card-title">🧘 감정 명상 가이드</div>
         <div class="meditation-card">
@@ -266,14 +228,14 @@ function renderResult(r) {
         </div>
       </div>`;
   } else {
-    card4 = `
+    card3 = `
       <div class="slider-card">
         <div class="card-title">🧘 감정 명상 가이드</div>
         <div class="empty-state" style="padding:2rem 0">명상 가이드를 찾지 못했어요.</div>
       </div>`;
   }
 
-  const cards = [card1, card2, card3, card4];
+  const cards = [card1, card2, card3];
   _sliderTotal  = cards.length;
   _sliderIdx    = 0;
   _medRemaining = 300;
@@ -372,9 +334,29 @@ async function renderStats() {
     const { records, filled_count, book_info } = data;
 
     const bars = records.map(({ weekday, record }) => {
-      if (!record) return `<div class="w-col"><div class="w-bar" style="height:6px;background:#EEEDE8"></div><span class="w-label">${weekday}</span></div>`;
-      const h = Math.round(4 + (record.scores[record.dominant] || 50) * 0.82);
-      return `<div class="w-col"><div class="w-bar" style="height:${h}px;background:${EMOTIONS[record.dominant]?.color || '#ccc'}"></div><span class="w-label">${weekday}</span></div>`;
+      if (!record) return `
+        <div class="w-col">
+          <span class="w-score" style="visibility:hidden">0%</span>
+          <div class="w-bar-wrap">
+            <div class="w-bar" style="height:6px;background:#EEEDE8"></div>
+          </div>
+          <span class="w-label">${weekday}</span>
+        </div>`;
+      const domScore = Math.round((record.scores[record.dominant] || 0) * 10) / 10;
+      const h        = Math.round(4 + (record.scores[record.dominant] || 50) * 0.82);
+      const barColor = EMOTIONS[record.dominant]?.color || '#ccc';
+      const tooltipRows = Object.entries(EMOTIONS).map(([k, em]) =>
+        `<div class="w-tip-row"><span class="w-tip-dot" style="background:${em.color}"></span>${em.label} <b>${(Math.round((record.scores[k] || 0) * 10) / 10).toFixed(1)}%</b></div>`
+      ).join('');
+      return `
+        <div class="w-col">
+          <span class="w-score">${domScore}%</span>
+          <div class="w-bar-wrap">
+            <div class="w-bar" style="height:${h}px;background:${barColor}"></div>
+            <div class="w-tooltip">${tooltipRows}</div>
+          </div>
+          <span class="w-label">${weekday}</span>
+        </div>`;
     }).join('');
 
     const summaryText = filled_count > 0
