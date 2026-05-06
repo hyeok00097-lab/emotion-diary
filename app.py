@@ -1,3 +1,4 @@
+import anthropic
 from flask import Flask, request, jsonify, render_template
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -7,7 +8,7 @@ from database import init_db, save_emotion, save_training_sample, \
     get_calendar_data, get_diary_detail, get_weekly_records
 from emotions import NLP_SCORE_TEMPLATE
 from nlp import koelectra_classify
-from llm import llm_only_analyze, llm_review_and_generate, get_book_recommendation
+from llm import llm_only_analyze, llm_review_and_generate, get_book_recommendation, chat_with_user
 from spotify_api import get_playlist
 from books_api import fetch_book_info
 from meditation import get_meditation
@@ -160,6 +161,31 @@ def save():
         save_emotion(data)
         return jsonify({"status": "ok", "date": data["date"]})
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/chat", methods=["POST"])
+def chat():
+    data     = request.get_json()
+    messages = data.get("messages", [])
+
+    if not messages:
+        return jsonify({"done": False, "message": "안녕하세요! 오늘 하루 어떠셨나요? 😊"})
+    if not get_api_key_1() or not get_api_key_2():
+        return jsonify({"error": "설정 탭에서 Anthropic API 키 2개를 먼저 입력해주세요."}), 400
+
+    try:
+        result = chat_with_user(messages)
+        return jsonify(result)
+    except anthropic.APIStatusError as e:
+        if e.status_code == 529:
+            print(f"[대화형] 529 과부하 — 사용자 안내 메시지 반환")
+            return jsonify({"done": False,
+                            "message": "서버가 잠시 바빠요 😢 조금 후에 다시 말씀해주세요!"})
+        print(f"[대화형 오류] {e}")
+        return jsonify({"error": str(e)}), 500
+    except Exception as e:
+        print(f"[대화형 오류] {e}")
         return jsonify({"error": str(e)}), 500
 
 

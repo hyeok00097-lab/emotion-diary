@@ -1,4 +1,5 @@
 import json
+import time
 import anthropic
 from config import get_api_key_1, get_api_key_2
 from emotions import EN_TO_KO, NLP_SCORE_TEMPLATE, EMOTIONS
@@ -163,6 +164,115 @@ NLP가 맞으면 nlp_ok:true, 틀리면 nlp_ok:false로 재분류.
 틀릴때: {{"nlp_ok":false,"dominant":"반드시 영문키(joy/excitement/neutral/surprise/disgust/fear/sadness/anger 중 하나)","scores":{{"joy":0,...}},"diary_text":"위 지침대로 작성한 1인칭 구어체 일기 (2~4문장)","empathy":"...","book_title":"...","book_author":"..."}}"""
 
     return _call_with_retry(_client2(), prompt, max_tokens=1000, label="LLM+NLP/Key2")
+
+
+# ── 대화형 모드: 사용자와 대화하며 STF 추출 ──────────────────────────────────
+def chat_with_user(messages: list) -> dict:
+    """
+    대화 히스토리를 받아 다음 AI 응답 반환.
+    STF 세 가지가 모두 파악되면 done=true와 함께 STF 반환.
+
+    Args:
+        messages: [{"role": "user"|"assistant", "content": "..."}, ...]
+                  첫 번째 메시지는 반드시 role="user"
+
+    Returns:
+        {"done": False, "message": "다음 질문"}
+        또는 {"done": True, "situation": "...", "thought": "...", "feeling": "..."}
+    """
+    if not messages:
+        return {"done": False, "message": "안녕하세요! 오늘 하루 어떠셨나요? 😊"}
+
+    system_prompt = (
+        "당신은 감정일기 작성을 돕는 친근한 AI입니다.\n"
+        "사용자와 자연스러운 대화를 통해 오늘 있었던\n"
+        "상황(Situation), 생각(Thought), 감정(Feeling)을 파악하세요.\n\n"
+        "[대화 원칙]\n"
+        "- 친구한테 말하듯 편하고 따뜻하게 대화하세요\n"
+        "- 질문은 한 번에 하나씩만 하세요\n"
+        "- 절대 처음부터 바로 질문하지 마세요\n"
+        "- 사용자의 말에 먼저 공감하고 자연스럽게 이어가세요\n\n"
+        "[감정 표현 처리 원칙]\n"
+        "- '나쁘지않았어', '그냥', '괜찮았어', 'soso', '모르겠어',\n"
+        "  '별로', '그저그래' 같은 중립적/애매한 표현은\n"
+        "  그 자체로 하나의 감정 상태로 인정하고 수용하세요\n"
+        "- 절대 더 구체적인 감정을 캐묻지 마세요\n"
+        "- 대신 '그렇구나~', 'ㅋㅋ 그런 날도 있지' 처럼\n"
+        "  자연스럽게 공감하고 넘어가세요\n"
+        "- STF가 완벽하지 않아도 대화가 자연스럽게\n"
+        "  마무리되면 done: true로 처리하세요\n\n"
+        "[마무리 기준]\n"
+        "- 오늘 있었던 일(Situation)이 파악되면\n"
+        "- 생각이나 감정이 애매해도 사용자가 더 말하기\n"
+        "  싫어하는 느낌이면 자연스럽게 마무리하세요\n\n"
+        "반드시 다음 JSON 형식으로만 응답하세요 (다른 텍스트 없이):\n"
+        "STF 파악 중: {\"done\": false, \"message\": \"사용자에게 보낼 자연스러운 대화 메시지\"}\n"
+        "STF 모두 파악: {\"done\": true, \"situation\": \"상황 요약\", "
+        "\"thought\": \"생각 요약\", \"feeling\": \"감정 요약\"}\n"
+        "첫 글자는 { 이어야 합니다."
+    )
+
+    # 529 overloaded_error 최대 2회 재시도 (1초 간격)
+    MAX_RETRIES = 2
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            message = _client2().messages.create(
+                model="claude-sonnet-4-5",
+                max_tokens=500,
+                system=system_prompt,
+                messages=messages,
+            )
+            raw = (message.content[0].text.strip()
+                   .replace("```json", "").replace("```", "").strip())
+            result = json.loads(raw)
+            print(f"[대화형] done={result.get('done')} | {raw[:80]}")
+            return result
+
+        except json.JSONDecodeError as e:
+            print(f"[대화형] JSON 파싱 실패: {e}")
+            return {"done": False,
+                    "message": "죄송해요, 잠깐 문제가 생겼어요. 다시 말씀해주실 수 있을까요?"}
+
+        except anthropic.APIStatusError as e:
+            # 529 overloaded_error: 재시도 대상
+            if e.status_code == 529 and attempt < MAX_RETRIES:
+                print(f"[대화형] 529 과부하 (시도 {attempt + 1}/{MAX_RETRIES + 1}), 1초 후 재시도")
+                time.sleep(1)
+                continue
+            print(f"[대화형] API 오류 (status={e.status_code}): {e}")
+            raise
+
+        except Exception as e:
+            print(f"[대화형] 오류: {e}")
+            raise
+
+
+def extract_stf_from_chat(messages: list) -> dict:
+    """
+    대화 히스토리에서 STF를 명시적으로 추출 (기존 분석 파이프라인 연결용).
+
+    Args:
+        messages: chat_with_user에 전달한 것과 동일한 대화 히스토리
+
+    Returns:
+        {"situation": "...", "thought": "...", "feeling": "..."}
+    """
+    conversation = "\n".join(
+        f"{'사용자' if m['role'] == 'user' else 'AI'}: {m['content']}"
+        for m in messages
+    )
+
+    prompt = (
+        f"다음 감정일기 대화에서 STF를 추출해주세요.\n\n"
+        f"대화:\n{conversation}\n\n"
+        "다른 텍스트 없이 JSON만 반환하세요. 첫 글자는 { 이어야 합니다.\n"
+        "{\"situation\": \"오늘 있었던 상황 요약\", "
+        "\"thought\": \"그때 든 생각 요약\", "
+        "\"feeling\": \"느낀 감정 요약\"}"
+    )
+
+    result, _ = _call_with_retry(_client2(), prompt, max_tokens=300, label="STF추출")
+    return result
 
 
 # ── 주간 통계용 도서 추천 ────────────────────────────────────────────────────

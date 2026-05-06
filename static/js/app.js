@@ -32,6 +32,11 @@ function _randomMedMusic() {
 let calYear, calMonth, analysisCache = null;
 let _sliderIdx = 0, _sliderTotal = 0, _touchStartX = 0;
 
+/* ─── 대화형 모드 상태 ───────────────────────────────────────────── */
+let currentMode   = 'chat';   // 'chat' | 'direct'
+let chatHistory   = [];       // [{role, content}, ...] — API 전달용 (첫 인사말 제외)
+let _typingCount  = 0;        // typing indicator ID 생성용
+
 /* ─── 초기화 ────────────────────────────────────────────────────── */
 function init() {
   const now = new Date();
@@ -39,6 +44,20 @@ function init() {
   calMonth = now.getMonth();
   document.getElementById('today-label').textContent =
     now.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+
+  /* 채팅 입력창 Enter → 전송, Shift+Enter → 줄바꿈 */
+  const chatInput = document.getElementById('chat-input');
+  if (chatInput) {
+    chatInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+  }
+
+  /* 기본 모드: 대화형 — 첫 인사말 표시 */
+  startChat();
 }
 
 /* ─── 탭 전환 ───────────────────────────────────────────────────── */
@@ -93,20 +112,37 @@ async function analyzeDiary() {
   btn.disabled = false;
 }
 
+/* ─── 모드 전환 ──────────────────────────────────────────────────── */
+function switchMode(mode) {
+  currentMode = mode;
+  document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
+  document.getElementById('btn-mode-' + mode).classList.add('active');
+  document.getElementById('chat-section').style.display       = mode === 'chat'   ? '' : 'none';
+  document.getElementById('stf-write-section').style.display  = mode === 'direct' ? '' : 'none';
+
+  /* 대화형으로 전환 시 대화 히스토리가 비어있으면 첫 인사말 표시 */
+  if (mode === 'chat' && chatHistory.length === 0) {
+    startChat();
+  }
+}
+
 /* ─── 일기 텍스트 표시 / 리셋 ───────────────────────────────────── */
 function showDiaryDisplay(text) {
-  document.getElementById('stf-write-section').style.display = 'none';
-  document.getElementById('diary-text-content').textContent  = text;
-  document.getElementById('diary-display').style.display     = 'block';
+  document.getElementById('write-input-section').style.display = 'none';
+  document.getElementById('diary-text-content').textContent    = text;
+  document.getElementById('diary-display').style.display       = 'block';
 }
 
 function resetToSTF() {
   _pauseMedTimer();
   _medRemaining = 300;
-  document.getElementById('stf-write-section').style.display = '';
-  document.getElementById('diary-display').style.display      = 'none';
-  document.getElementById('result-area').innerHTML            = '';
+  document.getElementById('write-input-section').style.display = '';
+  document.getElementById('diary-display').style.display        = 'none';
+  document.getElementById('result-area').innerHTML              = '';
   analysisCache = null;
+
+  /* 대화형 모드였으면 히스토리 초기화 후 재시작 */
+  if (currentMode === 'chat') startChat();
 }
 
 /* ─── 슬라이더 ──────────────────────────────────────────────────── */
@@ -274,6 +310,125 @@ function renderResult(r) {
     const dx = e.changedTouches[0].clientX - _touchStartX;
     if (Math.abs(dx) > 40) slideNav(dx < 0 ? 1 : -1);
   }, { passive: true });
+}
+
+/* ─── 대화형: 채팅 시작 (첫 인사말 표시, 히스토리 초기화) ──────────── */
+function startChat() {
+  chatHistory = [];
+  const container = document.getElementById('chat-messages');
+  if (!container) return;
+  container.innerHTML = '';
+  /* 첫 인사말은 화면에만 표시 — API 히스토리에는 포함하지 않음 */
+  _appendBubble('ai', '안녕하세요! 오늘 하루 어떠셨나요? 😊');
+}
+
+/* ─── 대화형: 메시지 전송 ────────────────────────────────────────── */
+async function sendMessage() {
+  const input = document.getElementById('chat-input');
+  const text  = input.value.trim();
+  if (!text) return;
+
+  /* 사용자 말풍선 */
+  _appendBubble('user', text);
+  chatHistory.push({ role: 'user', content: text });
+  input.value = '';
+  input.style.height = '';
+
+  const sendBtn  = document.getElementById('chat-send-btn');
+  const typingId = _appendTyping();
+  sendBtn.disabled = true;
+
+  try {
+    const res  = await fetch('/api/chat', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ messages: chatHistory }),
+    });
+    const data = await res.json();
+    _removeTyping(typingId);
+
+    if (data.error) throw new Error(data.error);
+
+    if (data.done) {
+      /* STF 추출 완료 → 분석 파이프라인 호출 */
+      _appendBubble('ai', '좋아요! 이제 감정을 분석해볼게요 ✨');
+      await _runAnalysisFromChat(data.situation, data.thought, data.feeling);
+    } else {
+      _appendBubble('ai', data.message);
+      chatHistory.push({ role: 'assistant', content: data.message });
+    }
+  } catch (e) {
+    _removeTyping(typingId);
+    _appendBubble('ai', `오류가 발생했어요 😢 ${e.message}`);
+  }
+
+  sendBtn.disabled = false;
+  input.focus();
+}
+
+/* ─── 대화형: 분석 파이프라인 실행 (/api/analyze 연결) ────────────── */
+async function _runAnalysisFromChat(situation, thought, feeling) {
+  document.getElementById('result-area').innerHTML =
+    '<div class="loading">감정을 분석하고 있어요 <span class="dot">·</span><span class="dot">·</span><span class="dot">·</span></div>';
+
+  try {
+    const res    = await fetch('/api/analyze', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ situation, thought, feeling }),
+    });
+    const result = await res.json();
+    if (result.error) throw new Error(result.error);
+
+    result.situation = situation;
+    result.thought   = thought;
+    result.feeling   = feeling;
+
+    const displayText = result.diary_text ||
+      [situation, thought, feeling].filter(Boolean).join('\n');
+    analysisCache = result;
+    showDiaryDisplay(displayText);
+    renderResult(result);
+  } catch (e) {
+    document.getElementById('result-area').innerHTML =
+      `<div class="empty-state">분석 중 오류가 발생했어요.<br>${e.message}</div>`;
+  }
+}
+
+/* ─── 대화형: 말풍선 추가 헬퍼 ──────────────────────────────────── */
+function _appendBubble(role, text) {
+  const container = document.getElementById('chat-messages');
+  if (!container) return;
+  const isUser = role === 'user';
+  const wrap   = document.createElement('div');
+  wrap.className = `chat-bubble-wrap ${role}`;
+  wrap.innerHTML = `
+    <div class="chat-avatar">${isUser ? '🙂' : '🤖'}</div>
+    <div class="chat-bubble ${role}">${text}</div>`;
+  container.appendChild(wrap);
+  container.scrollTop = container.scrollHeight;
+}
+
+/* ─── 대화형: 타이핑 인디케이터 추가/제거 ────────────────────────── */
+function _appendTyping() {
+  const container = document.getElementById('chat-messages');
+  const id        = 'typing-' + (++_typingCount);
+  const wrap      = document.createElement('div');
+  wrap.id        = id;
+  wrap.className = 'chat-bubble-wrap ai';
+  wrap.innerHTML = `
+    <div class="chat-avatar">🤖</div>
+    <div class="chat-bubble ai">
+      <div class="chat-typing"><span></span><span></span><span></span></div>
+    </div>`;
+  container.appendChild(wrap);
+  container.scrollTop = container.scrollHeight;
+  return id;
+}
+
+function _removeTyping(id) {
+  const el = document.getElementById(id);
+  if (el) el.remove();
 }
 
 /* ─── 감정 저장 ─────────────────────────────────────────────────── */

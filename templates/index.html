@@ -22,53 +22,78 @@
   <div class="screen active" id="screen-write">
     <p class="date-label" id="today-label"></p>
 
-    <div id="stf-write-section">
-      <div class="stf-container">
-        <!-- S: Situation -->
-        <div class="stf-step">
-          <div class="stf-label">
-            <span class="stf-badge">S</span>
-            상황
-            <span class="stf-hint">오늘 어떤 일이 있었나요?</span>
-          </div>
-          <textarea
-            id="situation"
-            placeholder="오늘 겪었던 상황이나 사건을 간단히 적어보세요."
-            rows="3"
-          ></textarea>
-        </div>
+    <div id="write-input-section">
 
-        <!-- T: Thought -->
-        <div class="stf-step">
-          <div class="stf-label">
-            <span class="stf-badge">T</span>
-            생각
-            <span class="stf-hint">그 순간 어떤 생각이 들었나요?</span>
-          </div>
-          <textarea
-            id="thought"
-            placeholder="그 상황에서 자동으로 떠오른 생각이나 해석을 적어보세요."
-            rows="3"
-          ></textarea>
-        </div>
+      <!-- 모드 선택 -->
+      <div class="mode-selector">
+        <button class="mode-btn active" id="btn-mode-chat" onclick="switchMode('chat')">💬 대화로 작성하기</button>
+        <button class="mode-btn" id="btn-mode-direct" onclick="switchMode('direct')">✏️ 직접 작성하기</button>
+      </div>
 
-        <!-- F: Feeling -->
-        <div class="stf-step">
-          <div class="stf-label">
-            <span class="stf-badge">F</span>
-            감정
-            <span class="stf-hint">지금 느끼는 감정은 무엇인가요?</span>
-          </div>
+      <!-- 대화형 모드 -->
+      <div id="chat-section">
+        <div class="chat-messages" id="chat-messages"></div>
+        <div class="chat-input-row">
           <textarea
-            id="feeling"
-            placeholder="지금 느끼는 감정을 솔직하게 표현해보세요. 복합적이어도 괜찮아요."
-            rows="3"
+            id="chat-input"
+            class="chat-input"
+            placeholder="메시지를 입력하세요… (Enter 전송, Shift+Enter 줄바꿈)"
+            rows="2"
           ></textarea>
+          <button class="chat-send-btn" id="chat-send-btn" onclick="sendMessage()">↑</button>
         </div>
       </div>
 
-      <button class="btn primary" id="analyze-btn" onclick="analyzeDiary()">감정 분석하기</button>
-    </div>
+      <!-- 직접 작성 모드 (STF 3칸) -->
+      <div id="stf-write-section" style="display:none">
+        <div class="stf-container">
+          <!-- S: Situation -->
+          <div class="stf-step">
+            <div class="stf-label">
+              <span class="stf-badge">S</span>
+              상황
+              <span class="stf-hint">오늘 어떤 일이 있었나요?</span>
+            </div>
+            <textarea
+              id="situation"
+              placeholder="오늘 겪었던 상황이나 사건을 간단히 적어보세요."
+              rows="3"
+            ></textarea>
+          </div>
+
+          <!-- T: Thought -->
+          <div class="stf-step">
+            <div class="stf-label">
+              <span class="stf-badge">T</span>
+              생각
+              <span class="stf-hint">그 순간 어떤 생각이 들었나요?</span>
+            </div>
+            <textarea
+              id="thought"
+              placeholder="그 상황에서 자동으로 떠오른 생각이나 해석을 적어보세요."
+              rows="3"
+            ></textarea>
+          </div>
+
+          <!-- F: Feeling -->
+          <div class="stf-step">
+            <div class="stf-label">
+              <span class="stf-badge">F</span>
+              감정
+              <span class="stf-hint">지금 느끼는 감정은 무엇인가요?</span>
+            </div>
+            <textarea
+              id="feeling"
+              placeholder="지금 느끼는 감정을 솔직하게 표현해보세요. 복합적이어도 괜찮아요."
+              rows="3"
+            ></textarea>
+          </div>
+        </div>
+
+        <button class="btn primary" id="analyze-btn" onclick="analyzeDiary()">감정 분석하기</button>
+      </div>
+
+    </div><!-- /write-input-section -->
 
     <div id="diary-display" class="diary-display" style="display:none">
       <div class="diary-display-card">
