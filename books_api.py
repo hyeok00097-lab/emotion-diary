@@ -1,3 +1,4 @@
+"""Google Books API로 도서 제목·저자·표지·설명 조회."""
 import requests
 from config import GOOGLE_BOOKS_API_KEY
 
@@ -20,7 +21,7 @@ def fetch_book_info(book_title: str, book_author: str) -> dict:
                 "publisher":   vol.get("publisher", ""),
                 "published":   vol.get("publishedDate", "")[:4],
                 "pages":       vol.get("pageCount", ""),
-                "description": desc[:120] + "..." if len(desc) > 120 else desc,
+                "description": desc,
                 "thumbnail":   thumb,
             }
     except Exception as e:

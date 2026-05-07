@@ -1,3 +1,4 @@
+"""Flask 서버 — API 엔드포인트 정의 및 분석 파이프라인 조율."""
 import anthropic
 from flask import Flask, request, jsonify, render_template
 from datetime import datetime
@@ -5,14 +6,17 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from sklearn.metrics.pairwise import cosine_similarity
 
 from database import init_db, save_emotion, save_training_sample, \
-    get_calendar_data, get_diary_detail, get_weekly_records
+    get_calendar_data, get_diary_detail, get_weekly_records, \
+    get_unfinished_dates, get_records_by_date, save_daily_diary, get_today_count, \
+    get_weekly_diaries
 from emotions import NLP_SCORE_TEMPLATE
 from nlp import koelectra_classify
-from llm import llm_only_analyze, llm_review_and_generate, get_book_recommendation, chat_with_user
+from llm import llm_only_analyze, llm_review_and_generate, get_book_recommendation, \
+    chat_with_user, generate_daily_diary
 from spotify_api import get_playlist
 from books_api import fetch_book_info
 from meditation import get_meditation
-from config import save_api_keys, get_keys_status, get_api_key_1, get_api_key_2
+from config import get_api_key_1, get_api_key_2
 
 app = Flask(__name__)
 init_db()
@@ -21,26 +25,6 @@ init_db()
 @app.route("/")
 def index():
     return render_template("index.html")
-
-
-@app.route("/api/settings", methods=["GET"])
-def get_settings():
-    return jsonify(get_keys_status())
-
-
-@app.route("/api/settings", methods=["POST"])
-def update_settings():
-    data = request.get_json()
-    key1 = data.get("key1", "").strip()
-    key2 = data.get("key2", "").strip()
-    if not key1 or not key2:
-        return jsonify({"error": "두 API 키를 모두 입력해주세요."}), 400
-    try:
-        save_api_keys(key1, key2)
-        print(f"[설정] API 키 업데이트 완료")
-        return jsonify({"status": "ok"})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/analyze", methods=["POST"])
@@ -133,6 +117,20 @@ def analyze():
         print(f"[유사도] dominant_match={similarity['dominant_match']} / "
               f"cosine={similarity['score_similarity_pct']}%")
 
+        # ── 감정 기록 자동 저장 ────────────────────────────────────────────────
+        today = datetime.now().strftime("%Y-%m-%d")
+        save_emotion({
+            "date":      today,
+            "situation": situation,
+            "thought":   thought,
+            "feeling":   feeling,
+            "diary_text": reviewed.get("diary_text", ""),
+            "dominant":  final_dominant,
+            **final_scores,
+            "empathy":   reviewed.get("empathy", ""),
+        })
+        today_count = get_today_count()
+
         result = {
             **final_scores,
             "dominant":         final_dominant,
@@ -145,6 +143,7 @@ def analyze():
             "meditation":       meditation,
             "token_comparison": token_comparison,
             "similarity":       similarity,
+            "today_count":      today_count,
         }
         return jsonify(result)
 
@@ -162,6 +161,37 @@ def save():
         return jsonify({"status": "ok", "date": data["date"]})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/check-unfinished")
+def check_unfinished():
+    """
+    미완성 일기(emotions 있으나 daily_diary 없는 과거 날짜) 자동 생성 엔드포인트.
+    앱 초기화 시 호출 — 전날까지의 일기를 LLM으로 완성해 daily_diary에 저장.
+    """
+    _EMOTION_KEYS = ["joy", "excitement", "neutral", "surprise",
+                     "disgust", "fear", "sadness", "anger"]
+    dates    = get_unfinished_dates()
+    finished = []
+
+    for date in dates:
+        try:
+            records    = get_records_by_date(date)
+            diary_text = generate_daily_diary(records)
+
+            # 평균 점수 계산
+            n          = len(records)
+            avg_scores = {k: round(sum(r["scores"].get(k, 0) for r in records) / n, 1)
+                          for k in _EMOTION_KEYS}
+            dominant   = max(avg_scores, key=avg_scores.get)
+
+            save_daily_diary(date, diary_text, dominant, avg_scores)
+            finished.append(date)
+            print(f"[미완성 일기] {date} → daily_diary 저장 완료")
+        except Exception as e:
+            print(f"[미완성 일기] {date} 처리 오류: {e}")
+
+    return jsonify({"finished": finished, "count": len(finished)})
 
 
 @app.route("/api/chat", methods=["POST"])
@@ -204,20 +234,20 @@ def diary_detail(date):
 
 @app.route("/api/stats/weekly")
 def weekly_stats():
-    records   = get_weekly_records(days=7)
-    filled    = [r for r in records if r["record"] is not None]
-    book_info = None
+    # 차트용: 오늘 포함 7일 (emotions + daily_diary 혼합)
+    records  = get_weekly_records(days=7)
+    filled   = [r for r in records if r["record"] is not None]
 
-    if len(filled) >= 7:
-        dominant_week = max(
-            {r["record"]["dominant"] for r in filled},
-            key=lambda e: sum(1 for r in filled if r["record"]["dominant"] == e),
-        )
-        book_info = get_book_recommendation(dominant_week, filled)
+    # 도서 추천용: daily_diary 완성 일기만 (오늘 제외)
+    diaries   = get_weekly_diaries(days=7)
+    book_info = None
+    if len(diaries) >= 7:
+        book_info = get_book_recommendation(diaries)
 
     return jsonify({
         "records":      records,
         "filled_count": len(filled),
+        "diary_count":  len(diaries),   # 프론트 안내 메시지용
         "book_info":    book_info,
     })
 

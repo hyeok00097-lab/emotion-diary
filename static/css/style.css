@@ -138,37 +138,6 @@ textarea::placeholder { font-family: 'Noto Sans KR', sans-serif; color: #C5C4BC;
 .badge-fix { background: #E07B54; }
 .conf-text { font-size: 10px; color: var(--muted); }
 
-/* ─── STF Summary Box ───────────────────────────────────────────── */
-.stf-summary {
-  display: flex;
-  align-items: center;
-  gap: 0;
-  background: #F7F6F1;
-  border-radius: 8px;
-  padding: .45rem .75rem;
-  margin-bottom: .85rem;
-  font-size: 12px;
-  color: var(--muted);
-  line-height: 1.4;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  min-width: 0;
-}
-.stf-arrow {
-  flex-shrink: 0;
-  margin: 0 .35rem;
-  color: #C5C4BC;
-  font-size: 11px;
-}
-.stf-summary > :not(.stf-arrow) {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
-  min-width: 0;
-}
-
 /* ─── Emotion Bars ──────────────────────────────────────────────── */
 .emo-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
 .emo-name { font-size: 12px; width: 44px; color: var(--muted); flex-shrink: 0; }
@@ -206,15 +175,18 @@ textarea::placeholder { font-family: 'Noto Sans KR', sans-serif; color: #C5C4BC;
 .rec { padding: 10px 12px; background: #F7F6F1; border-radius: 9px; }
 
 /* Music */
-.playlist-track { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
-.track-info { flex: 1; min-width: 0; }
-.track-title { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.track-artist { font-size: 11px; color: var(--muted); margin-top: 1px; }
-.track-link {
-  flex-shrink: 0; width: 28px; height: 28px;
-  background: #1DB954; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  text-decoration: none; font-size: 11px; color: #fff;
+.spotify-track-info {
+  display: flex; flex-direction: column; gap: 2px;
+  margin-bottom: .65rem;
+}
+.spotify-track-title {
+  font-size: 14px; font-weight: 600;
+  color: var(--text); text-decoration: none;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.spotify-track-title:hover { text-decoration: underline; }
+.spotify-track-artist {
+  font-size: 12px; color: var(--muted);
 }
 
 /* Book */
@@ -480,178 +452,6 @@ textarea::placeholder { font-family: 'Noto Sans KR', sans-serif; color: #C5C4BC;
   border-radius: 10px; border-left: 3px solid #AFA9EC;
 }
 
-/* ─── Settings Tab ──────────────────────────────────────────────── */
-.settings-section { display: flex; flex-direction: column; gap: 1rem; }
-.settings-desc {
-  font-size: 12px; color: var(--muted); line-height: 1.7;
-  padding: .85rem 1rem;
-  background: #F7F6F1; border-radius: 10px;
-  border-left: 3px solid var(--border);
-}
-.settings-desc code {
-  font-family: 'Courier New', monospace; font-size: 11px;
-  background: #EEEDE8; padding: 1px 5px; border-radius: 3px;
-}
-.settings-group {
-  padding: 1.1rem 1.25rem;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  display: flex; flex-direction: column; gap: .5rem;
-}
-.settings-group-header {
-  display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
-}
-.settings-key-badge {
-  display: inline-flex; align-items: center; justify-content: center;
-  padding: 2px 10px; border-radius: 6px;
-  font-size: 11px; font-weight: 700; color: #fff;
-}
-.settings-key-badge.k1 { background: #AFA9EC; }
-.settings-key-badge.k2 { background: #85C9EB; }
-.settings-key-role {
-  font-size: 13px; font-weight: 500; color: var(--text);
-}
-.settings-key-status {
-  font-size: 11px; margin-left: auto;
-}
-.settings-key-status.set   { color: #5BA888; }
-.settings-key-status.unset { color: #E07B54; }
-.settings-key-hint { font-size: 12px; color: var(--muted); line-height: 1.5; }
-.settings-input-wrap {
-  display: flex; align-items: center;
-  border: 1px solid var(--border); border-radius: 10px;
-  overflow: hidden; background: var(--card);
-  transition: border .15s;
-}
-.settings-input-wrap:focus-within { border-color: #BBBAB3; }
-.settings-input {
-  flex: 1; border: none; outline: none;
-  padding: .7rem 1rem;
-  font-family: 'Courier New', monospace; font-size: 13px;
-  color: var(--text); background: transparent;
-  min-width: 0;
-}
-.settings-eye {
-  flex-shrink: 0; padding: 0 .75rem;
-  background: none; border: none; cursor: pointer;
-  font-size: 15px; color: var(--muted);
-  border-left: 1px solid var(--border);
-  height: 100%; display: flex; align-items: center;
-  transition: background .15s;
-}
-.settings-eye:hover { background: #F5F4F0; }
-.settings-msg {
-  font-size: 13px; text-align: center; padding: .5rem;
-  border-radius: 8px; display: none;
-}
-.settings-msg.ok  { display: block; background: #EEF8F3; color: #5BA888; }
-.settings-msg.err { display: block; background: #FEF0EE; color: #E07B54; }
-
-/* ─── Token Comparison Panel ────────────────────────────────────── */
-.token-panel {
-  margin-top: 1rem;
-  padding: 1rem 1.25rem;
-  background: #F7F6F1;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-}
-.token-panel-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  cursor: pointer;
-  user-select: none;
-}
-.token-panel-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--muted);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.token-toggle {
-  font-size: 11px;
-  color: var(--muted);
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0;
-  transition: transform .2s;
-}
-.token-toggle.open { transform: rotate(180deg); }
-.token-body { margin-top: .75rem; }
-.token-row {
-  display: flex;
-  align-items: center;
-  gap: .75rem;
-  margin-bottom: .5rem;
-}
-.token-label {
-  font-size: 11px;
-  color: var(--muted);
-  width: 72px;
-  flex-shrink: 0;
-}
-.token-bar-wrap { flex: 1; position: relative; height: 18px; }
-.token-bar-bg {
-  position: absolute;
-  inset: 0;
-  background: #EEEDE8;
-  border-radius: 4px;
-  overflow: hidden;
-}
-.token-bar-fill {
-  height: 100%;
-  border-radius: 4px;
-  transition: width .7s cubic-bezier(.4,0,.2,1);
-}
-.token-bar-fill.llm-only { background: #AFA9EC; }
-.token-bar-fill.llm-npn  { background: #85C9EB; }
-.token-count {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text);
-  width: 50px;
-  text-align: right;
-  flex-shrink: 0;
-}
-.token-detail {
-  font-size: 11px;
-  color: var(--muted);
-  display: flex;
-  gap: 8px;
-  margin-top: 1px;
-  margin-bottom: 6px;
-  padding-left: calc(72px + .75rem);
-}
-.token-divider { border: none; border-top: 1px solid var(--border); margin: .6rem 0; }
-.token-saved {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 12px;
-}
-.token-saved-label { color: var(--muted); }
-.token-saved-val {
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.token-saved-val.positive { color: #5BA888; }
-.token-saved-val.negative { color: #E07B54; }
-.token-badge {
-  font-size: 10px;
-  padding: 2px 7px;
-  border-radius: 4px;
-  color: #fff;
-  font-weight: 500;
-}
-.token-badge.positive { background: #5BA888; }
-.token-badge.negative { background: #E07B54; }
-
 /* ─── Empty State ───────────────────────────────────────────────── */
 .empty-state {
   text-align: center; padding: 4rem 1rem;
@@ -874,35 +674,89 @@ textarea::placeholder { font-family: 'Noto Sans KR', sans-serif; color: #C5C4BC;
   40%           { transform: translateY(-4px); opacity: 1; }
 }
 
-/* ─── Similarity Row ────────────────────────────────────────────── */
-.sim-row {
+/* ─── 대화형: 기록하기 / 더 얘기할게 버튼 ──────────────────────── */
+.chat-ready-actions {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: .85rem;
-  padding: .5rem .75rem;
-  background: #F7F6F1;
-  border-radius: 8px;
-  flex-wrap: wrap;
+  gap: .6rem;
+  padding: .5rem .25rem .25rem;
+  justify-content: center;
 }
-.sim-label {
-  font-size: 11px;
-  color: var(--muted);
+.chat-ready-btn {
   flex: 1;
-  min-width: 0;
-}
-.sim-pct {
-  font-size: 14px;
+  max-width: 160px;
+  padding: .55rem 0;
+  border: none;
+  border-radius: 20px;
+  font-size: 13px;
   font-weight: 600;
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
+  font-family: 'Noto Sans KR', sans-serif;
+  cursor: pointer;
+  transition: opacity .15s, transform .1s;
 }
-.sim-tag {
-  font-size: 10px;
-  font-weight: 500;
-  padding: 2px 8px;
-  border-radius: 4px;
+.chat-ready-btn:active { transform: scale(.96); }
+.chat-ready-btn.primary {
+  background: var(--text);
   color: #fff;
 }
-.sim-tag.match { background: #5BA888; }
-.sim-tag.diff  { background: #E07B54; }
+.chat-ready-btn.primary:hover  { opacity: .85; }
+.chat-ready-btn.secondary {
+  background: #EEEDE8;
+  color: var(--text);
+}
+.chat-ready-btn.secondary:hover { opacity: .75; }
+
+/* ─── Toast 알림 ────────────────────────────────────────────────── */
+.toast-msg {
+  position: fixed;
+  bottom: 2rem;
+  left: 50%;
+  transform: translateX(-50%) translateY(1rem);
+  background: #1A1A18;
+  color: #fff;
+  font-size: 14px;
+  font-family: 'Noto Sans KR', sans-serif;
+  padding: .65rem 1.2rem;
+  border-radius: 24px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 9999;
+  transition: opacity .3s, transform .3s;
+}
+.toast-msg.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* ─── 오늘 날짜 모달: 여러 기록 목록 ────────────────────────────── */
+.today-record-item {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: .75rem 1rem;
+  margin-bottom: .75rem;
+}
+.today-record-item:last-child { margin-bottom: 0; }
+.today-record-header {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  margin-bottom: .5rem;
+}
+.today-record-idx {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.today-record-time {
+  font-size: 12px;
+  color: var(--muted);
+  margin-left: auto;
+}
+.today-record-dom {
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 20px;
+}
+

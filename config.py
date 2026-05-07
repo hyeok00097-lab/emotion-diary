@@ -1,3 +1,4 @@
+"""환경변수 로드 및 API 키 관리 — .env 파일 읽기/쓰기와 외부 서비스 키 노출."""
 import os
 from pathlib import Path
 from dotenv import load_dotenv, set_key, dotenv_values

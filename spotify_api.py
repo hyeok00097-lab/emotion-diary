@@ -1,3 +1,4 @@
+"""Spotify Search API로 감정 맞춤 트랙 1곡 추천 — 키 없으면 빈 결과 반환."""
 import random
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials

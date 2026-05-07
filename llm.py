@@ -1,3 +1,4 @@
+"""Claude API 호출 — LLM 단독 분석·NLP 검토·대화형 STF 추출·도서 추천."""
 import json
 import time
 import anthropic
@@ -170,15 +171,17 @@ NLP가 맞으면 nlp_ok:true, 틀리면 nlp_ok:false로 재분류.
 def chat_with_user(messages: list) -> dict:
     """
     대화 히스토리를 받아 다음 AI 응답 반환.
-    STF 세 가지가 모두 파악되면 done=true와 함께 STF 반환.
+    STF가 파악되면 done=false + ready=true로 마무리 멘트와 STF를 함께 반환.
+    프론트엔드가 "기록하기" 버튼을 보여주고, 사용자가 확인 후 분석 파이프라인을 시작함.
 
     Args:
         messages: [{"role": "user"|"assistant", "content": "..."}, ...]
                   첫 번째 메시지는 반드시 role="user"
 
     Returns:
-        {"done": False, "message": "다음 질문"}
-        또는 {"done": True, "situation": "...", "thought": "...", "feeling": "..."}
+        대화 중:  {"done": false, "message": "다음 질문"}
+        STF 완료: {"done": false, "ready": true, "message": "마무리 멘트",
+                   "situation": "...", "thought": "...", "feeling": "..."}
     """
     if not messages:
         return {"done": False, "message": "안녕하세요! 오늘 하루 어떠셨나요? 😊"}
@@ -200,25 +203,29 @@ def chat_with_user(messages: list) -> dict:
         "- 대신 '그렇구나~', 'ㅋㅋ 그런 날도 있지' 처럼\n"
         "  자연스럽게 공감하고 넘어가세요\n"
         "- STF가 완벽하지 않아도 대화가 자연스럽게\n"
-        "  마무리되면 done: true로 처리하세요\n\n"
+        "  마무리되면 ready: true로 처리하세요\n\n"
         "[마무리 기준]\n"
         "- 오늘 있었던 일(Situation)이 파악되면\n"
         "- 생각이나 감정이 애매해도 사용자가 더 말하기\n"
         "  싫어하는 느낌이면 자연스럽게 마무리하세요\n\n"
+        "[마무리 멘트 작성 요령]\n"
+        "- 오늘 대화를 짧게 공감으로 마무리하세요\n"
+        "- 반드시 '더 하고 싶은 말 있어? 없으면 아래 버튼 눌러서 기록해줘!' 를 포함하세요\n"
+        "- 예시: '오늘 있었던 일 잘 들었어 😊 더 하고 싶은 말 있어? 없으면 아래 버튼 눌러서 기록해줘!'\n\n"
         "반드시 다음 JSON 형식으로만 응답하세요 (다른 텍스트 없이):\n"
         "STF 파악 중: {\"done\": false, \"message\": \"사용자에게 보낼 자연스러운 대화 메시지\"}\n"
-        "STF 모두 파악: {\"done\": true, \"situation\": \"상황 요약\", "
-        "\"thought\": \"생각 요약\", \"feeling\": \"감정 요약\"}\n"
+        "STF 파악 완료: {\"done\": false, \"ready\": true, \"message\": \"마무리 멘트\", "
+        "\"situation\": \"상황 요약\", \"thought\": \"생각 요약\", \"feeling\": \"감정 요약\"}\n"
         "첫 글자는 { 이어야 합니다."
     )
 
-    # 529 overloaded_error 최대 2회 재시도 (1초 간격)
+    # 529 과부하 및 JSON 파싱 실패 모두 최대 2회 재시도
     MAX_RETRIES = 2
     for attempt in range(MAX_RETRIES + 1):
         try:
             message = _client2().messages.create(
                 model="claude-sonnet-4-5",
-                max_tokens=500,
+                max_tokens=1000,
                 system=system_prompt,
                 messages=messages,
             )
@@ -229,12 +236,15 @@ def chat_with_user(messages: list) -> dict:
             return result
 
         except json.JSONDecodeError as e:
-            print(f"[대화형] JSON 파싱 실패: {e}")
+            # JSON 파싱 실패: 재시도 가능하면 재시도, 아니면 안내 메시지 반환
+            print(f"[대화형] JSON 파싱 실패 (시도 {attempt + 1}/{MAX_RETRIES + 1}): {e}")
+            if attempt < MAX_RETRIES:
+                continue
             return {"done": False,
                     "message": "죄송해요, 잠깐 문제가 생겼어요. 다시 말씀해주실 수 있을까요?"}
 
         except anthropic.APIStatusError as e:
-            # 529 overloaded_error: 재시도 대상
+            # 529 과부하: 1초 대기 후 재시도
             if e.status_code == 529 and attempt < MAX_RETRIES:
                 print(f"[대화형] 529 과부하 (시도 {attempt + 1}/{MAX_RETRIES + 1}), 1초 후 재시도")
                 time.sleep(1)
@@ -275,37 +285,99 @@ def extract_stf_from_chat(messages: list) -> dict:
     return result
 
 
-# ── 주간 통계용 도서 추천 ────────────────────────────────────────────────────
-def get_book_recommendation(dominant: str, filled_records: list) -> dict | None:
-    dom_count, score_sums, diary_excerpts = {}, {k: 0.0 for k in EMOTIONS}, []
-    for r in filled_records:
-        rec = r["record"]
-        dom_count[rec["dominant"]] = dom_count.get(rec["dominant"], 0) + 1
-        for k in EMOTIONS:
-            score_sums[k] += rec["scores"].get(k, 0)
-        if rec.get("diary_text"):
-            diary_excerpts.append(rec["diary_text"][:60])
+# ── 하루 여러 감정 기록 → 일기 자동 생성 ─────────────────────────────────────
+def generate_daily_diary(records: list) -> str:
+    """
+    하루의 감정 기록 목록으로 1인칭 일기체 텍스트를 생성.
 
-    top_emotion = max(dom_count, key=dom_count.get)
-    top_ko      = EN_TO_KO.get(top_emotion, top_emotion)
-    avg_scores  = {k: round(v / len(filled_records), 1) for k, v in score_sums.items()}
+    Args:
+        records: get_records_by_date() 반환값 — 각 항목은
+                 {situation, thought, feeling, diary_text, dominant, scores, empathy, recorded_at}
+
+    Returns:
+        완성된 일기 텍스트 (3~5문장 구어체)
+    """
+    entries = []
+    for i, r in enumerate(records, 1):
+        time_str = r.get("recorded_at", "")[:16]   # "YYYY-MM-DD HH:MM"
+        parts = []
+        if r.get("situation"):
+            parts.append(f"상황: {r['situation']}")
+        if r.get("thought"):
+            parts.append(f"생각: {r['thought']}")
+        if r.get("feeling"):
+            parts.append(f"감정: {r['feeling']}")
+        if r.get("diary_text"):
+            parts.append(f"기록: {r['diary_text']}")
+        entries.append(f"[기록 {i} | {time_str}]\n" + "\n".join(parts))
+
+    prompt = (
+        "다음은 오늘 하루 동안 기록된 감정 기록들입니다.\n"
+        "이를 바탕으로 하루를 돌아보는 자연스러운 1인칭 일기체 3~5문장으로 작성해주세요.\n"
+        "시간 순서대로 자연스럽게 연결하고 구어체로 작성하세요.\n"
+        "일기 텍스트만 출력하고 다른 설명은 쓰지 마세요.\n\n"
+        + "\n\n".join(entries)
+    )
+
+    try:
+        message = _client2().messages.create(
+            model="claude-opus-4-5",
+            max_tokens=500,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        diary = message.content[0].text.strip()
+        print(f"[일기 생성] {len(records)}개 기록 → {len(diary)}자")
+        return diary
+    except Exception as e:
+        print(f"[일기 생성] 오류: {e}")
+        # 오류 시 마지막 diary_text 반환
+        for r in reversed(records):
+            if r.get("diary_text"):
+                return r["diary_text"]
+        return ""
+
+
+# ── 주간 통계용 도서 추천 ────────────────────────────────────────────────────
+def get_book_recommendation(diaries: list) -> dict | None:
+    """
+    최근 7일 daily_diary 기록을 바탕으로 도서 1권 추천.
+
+    Args:
+        diaries: get_weekly_diaries() 반환값
+                 [{"date", "diary_text", "dominant", "scores"}, ...]
+
+    Returns:
+        fetch_book_info() 반환 dict 또는 None
+    """
+    if not diaries:
+        return None
+
+    # 날짜별 일기 요약 (날짜 + 주요 감정 + 일기 앞 80자)
+    diary_lines = []
+    for d in diaries:
+        dom_ko = EN_TO_KO.get(d["dominant"], d["dominant"])
+        excerpt = d["diary_text"][:80].replace("\n", " ") if d["diary_text"] else "(내용 없음)"
+        diary_lines.append(f"[{d['date']} · {dom_ko}] {excerpt}")
+
+    prompt = (
+        "다음은 최근 7일간의 감정 일기입니다.\n"
+        "날짜별 주요 감정과 일기 내용을 종합하여\n"
+        "이 사람에게 가장 어울리는 한국 소설 또는 에세이 1권을 추천해주세요.\n"
+        "형식: 제목|||저자 (다른 텍스트 없이 이 형식만 출력하세요.)\n\n"
+        + "\n".join(diary_lines)
+    )
 
     try:
         msg = _client2().messages.create(
             model="claude-opus-4-5",
             max_tokens=150,
-            messages=[{"role": "user", "content":
-                f"최근 {len(filled_records)}일간의 감정 데이터입니다.\n"
-                f"주요 감정: {top_ko}\n"
-                f"평균 감정 점수: {avg_scores}\n"
-                f"일기 내용 발췌: {' / '.join(diary_excerpts)}\n\n"
-                f"이 사람에게 어울리는 한국 소설 또는 에세이를 1권만 추천해주세요.\n"
-                f"형식: 제목|||저자 (다른 텍스트 없이 이 형식만 출력하세요.)"}],
+            messages=[{"role": "user", "content": prompt}],
         )
         book_raw    = msg.content[0].text.strip()
         book_parts  = book_raw.split("|||")
         book_title  = book_parts[0].strip()
         book_author = book_parts[1].strip() if len(book_parts) > 1 else ""
+        print(f"[주간 도서 추천] {book_title} — {book_author}")
         return fetch_book_info(book_title, book_author)
     except Exception as e:
         print(f"[주간 도서 추천] 오류: {e}")

@@ -36,6 +36,7 @@ let _sliderIdx = 0, _sliderTotal = 0, _touchStartX = 0;
 let currentMode   = 'chat';   // 'chat' | 'direct'
 let chatHistory   = [];       // [{role, content}, ...] — API 전달용 (첫 인사말 제외)
 let _typingCount  = 0;        // typing indicator ID 생성용
+let _pendingSTF   = null;     // ready:true 응답에서 받은 STF — 버튼 확인 대기 중
 
 /* ─── 초기화 ────────────────────────────────────────────────────── */
 function init() {
@@ -58,6 +59,9 @@ function init() {
 
   /* 기본 모드: 대화형 — 첫 인사말 표시 */
   startChat();
+
+  /* 미완성 일기 자동 완성 (백그라운드) */
+  _checkUnfinished();
 }
 
 /* ─── 탭 전환 ───────────────────────────────────────────────────── */
@@ -141,6 +145,12 @@ function resetToSTF() {
   document.getElementById('result-area').innerHTML              = '';
   analysisCache = null;
 
+  /* STF 직접 입력값 초기화 */
+  ['situation', 'thought', 'feeling'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+
   /* 대화형 모드였으면 히스토리 초기화 후 재시작 */
   if (currentMode === 'chat') startChat();
 }
@@ -200,22 +210,23 @@ function renderResult(r) {
       ${bars}
     </div>`;
 
-  /* ── Card 2: 음악 추천 ── */
+  /* ── Card 2: 음악 추천 (Spotify embed) ── */
   let card2;
   if (r.playlist && r.playlist.length > 0) {
     const t = r.playlist[0];
     card2 = `
       <div class="slider-card">
         <div class="card-title">🎵 오늘의 감정 추천곡</div>
-        <div class="rec">
-          <div class="playlist-track">
-            <div class="track-info">
-              <div class="track-title">${t.title}</div>
-              <div class="track-artist">${t.artist}</div>
-            </div>
-            <a class="track-link" href="${t.url}" target="_blank">▶</a>
-          </div>
+        <div class="spotify-track-info">
+          <a class="spotify-track-title" href="${t.url}" target="_blank" rel="noopener">${t.title}</a>
+          <span class="spotify-track-artist">${t.artist}</span>
         </div>
+        <iframe
+          src="https://open.spotify.com/embed/track/${t.track_id}"
+          width="100%" height="80" frameborder="0"
+          allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+          loading="lazy"
+        ></iframe>
       </div>`;
   } else {
     card2 = `
@@ -290,8 +301,10 @@ function renderResult(r) {
       <button class="slider-arrow" id="slider-next" onclick="slideNav(1)"
               aria-label="다음">›</button>
     </div>
-    <div class="slider-dots" id="slider-dots">${dots}</div>
-    <button class="btn" onclick="saveEmotion()" style="margin-top:1rem">감정 기록 저장하기</button>`;
+    <div class="slider-dots" id="slider-dots">${dots}</div>`;
+
+  /* 자동 저장 완료 토스트 */
+  _showToast(`오늘 ${r.today_count || 1}번째 기록이 저장됐어요! 😊`);
 
   /* 바 애니메이션 */
   setTimeout(() => {
@@ -315,11 +328,12 @@ function renderResult(r) {
 /* ─── 대화형: 채팅 시작 (첫 인사말 표시, 히스토리 초기화) ──────────── */
 function startChat() {
   chatHistory = [];
+  _pendingSTF = null;
   const container = document.getElementById('chat-messages');
   if (!container) return;
   container.innerHTML = '';
   /* 첫 인사말은 화면에만 표시 — API 히스토리에는 포함하지 않음 */
-  _appendBubble('ai', '안녕하세요! 오늘 하루 어떠셨나요? 😊');
+  _appendBubble('ai', '안녕하세요! 😊 지금 무슨 일이 있나요?');
 }
 
 /* ─── 대화형: 메시지 전송 ────────────────────────────────────────── */
@@ -349,10 +363,12 @@ async function sendMessage() {
 
     if (data.error) throw new Error(data.error);
 
-    if (data.done) {
-      /* STF 추출 완료 → 분석 파이프라인 호출 */
-      _appendBubble('ai', '좋아요! 이제 감정을 분석해볼게요 ✨');
-      await _runAnalysisFromChat(data.situation, data.thought, data.feeling);
+    if (data.ready) {
+      /* STF 파악 완료 — 마무리 멘트 표시 후 확인 버튼 2개 노출 */
+      _pendingSTF = { situation: data.situation, thought: data.thought, feeling: data.feeling };
+      chatHistory.push({ role: 'assistant', content: data.message });
+      _appendBubble('ai', data.message);
+      _showReadyButtons();
     } else {
       _appendBubble('ai', data.message);
       chatHistory.push({ role: 'assistant', content: data.message });
@@ -367,10 +383,7 @@ async function sendMessage() {
 }
 
 /* ─── 대화형: 분석 파이프라인 실행 (/api/analyze 연결) ────────────── */
-async function _runAnalysisFromChat(situation, thought, feeling) {
-  document.getElementById('result-area').innerHTML =
-    '<div class="loading">감정을 분석하고 있어요 <span class="dot">·</span><span class="dot">·</span><span class="dot">·</span></div>';
-
+async function _runAnalysisFromChat(situation, thought, feeling, typingId = null) {
   try {
     const res    = await fetch('/api/analyze', {
       method:  'POST',
@@ -378,6 +391,7 @@ async function _runAnalysisFromChat(situation, thought, feeling) {
       body:    JSON.stringify({ situation, thought, feeling }),
     });
     const result = await res.json();
+    if (typingId) _removeTyping(typingId);
     if (result.error) throw new Error(result.error);
 
     result.situation = situation;
@@ -390,6 +404,7 @@ async function _runAnalysisFromChat(situation, thought, feeling) {
     showDiaryDisplay(displayText);
     renderResult(result);
   } catch (e) {
+    if (typingId) _removeTyping(typingId);
     document.getElementById('result-area').innerHTML =
       `<div class="empty-state">분석 중 오류가 발생했어요.<br>${e.message}</div>`;
   }
@@ -431,19 +446,78 @@ function _removeTyping(id) {
   if (el) el.remove();
 }
 
-/* ─── 감정 저장 ─────────────────────────────────────────────────── */
-async function saveEmotion() {
-  if (!analysisCache) return;
-  const today = new Date().toISOString().slice(0, 10);
-  const res   = await fetch('/api/save', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ date: today, ...analysisCache }),
+/* ─── 대화형: 기록하기 / 더 얘기할게 버튼 ──────────────────────────── */
+function _showReadyButtons() {
+  _hideReadyButtons();   // 중복 방지
+  const container = document.getElementById('chat-messages');
+  if (!container) return;
+
+  const wrap = document.createElement('div');
+  wrap.id        = 'chat-ready-actions';
+  wrap.className = 'chat-ready-actions';
+  wrap.innerHTML = `
+    <button class="chat-ready-btn primary" onclick="onClickRecord()">기록하기 📝</button>
+    <button class="chat-ready-btn secondary" onclick="onClickMoreTalk()">더 얘기할게</button>`;
+  container.appendChild(wrap);
+  container.scrollTop = container.scrollHeight;
+}
+
+function _hideReadyButtons() {
+  const el = document.getElementById('chat-ready-actions');
+  if (el) el.remove();
+}
+
+async function onClickRecord() {
+  if (!_pendingSTF) return;
+  _hideReadyButtons();
+  const { situation, thought, feeling } = _pendingSTF;
+  _pendingSTF = null;
+
+  /* 입력창 비활성화 */
+  const sendBtn = document.getElementById('chat-send-btn');
+  if (sendBtn) sendBtn.disabled = true;
+
+  _appendBubble('ai', '그렇구나~ 잠깐만요 😊');
+  const analyzeTypingId = _appendTyping();
+  await _runAnalysisFromChat(situation, thought, feeling, analyzeTypingId);
+
+  if (sendBtn) sendBtn.disabled = false;
+}
+
+function onClickMoreTalk() {
+  _hideReadyButtons();
+  _pendingSTF = null;
+  /* 입력창에 포커스 — 사용자가 바로 이어서 타이핑 가능 */
+  const input = document.getElementById('chat-input');
+  if (input) input.focus();
+}
+
+/* ─── 토스트 알림 ────────────────────────────────────────────────── */
+function _showToast(msg) {
+  const toast = document.createElement('div');
+  toast.className   = 'toast-msg';
+  toast.textContent = msg;
+  document.body.appendChild(toast);
+  /* 애니메이션 시작 — 다음 프레임에서 visible 추가 */
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => toast.classList.add('visible'));
   });
-  const data = await res.json();
-  if (data.status === 'ok') {
-    const sb = document.querySelector('#result-area .btn');
-    if (sb) { sb.textContent = '저장 완료!'; sb.disabled = true; }
+  setTimeout(() => {
+    toast.classList.remove('visible');
+    setTimeout(() => toast.remove(), 400);
+  }, 2600);
+}
+
+/* ─── 미완성 일기 자동 완성 ──────────────────────────────────────── */
+async function _checkUnfinished() {
+  try {
+    const res  = await fetch('/api/check-unfinished');
+    const data = await res.json();
+    if (data.count > 0) {
+      _showToast(`📖 ${data.count}일치 일기가 자동으로 완성됐어요!`);
+    }
+  } catch (e) {
+    console.warn('[미완성 일기 체크] 오류:', e.message);
   }
 }
 
@@ -486,7 +560,7 @@ async function renderStats() {
   try {
     const res  = await fetch('/api/stats/weekly');
     const data = await res.json();
-    const { records, filled_count, book_info } = data;
+    const { records, filled_count, diary_count, book_info } = data;
 
     const bars = records.map(({ weekday, record }) => {
       if (!record) return `
@@ -535,8 +609,8 @@ async function renderStats() {
             </div>
           </div>
         </div>`;
-    } else if (filled_count < 7) {
-      const remain = 7 - filled_count;
+    } else {
+      const remain = 7 - (diary_count ?? filled_count);
       bookHtml = `
         <div class="book-section">
           <div class="book-section-label">📚 이번 주 감정 기반 추천 도서</div>
@@ -569,13 +643,42 @@ async function openDiaryModal(date) {
   document.getElementById('modal-stf').innerHTML = buildModalSTF(d);
 
   const empathyEl = document.getElementById('modal-empathy');
-  empathyEl.textContent   = d.empathy || '';
-  empathyEl.style.display = d.empathy ? 'block' : 'none';
+  /* is_today인 경우 마지막 기록의 empathy 사용, 과거는 diary에 저장된 값 없음 */
+  const empathyText = d.is_today
+    ? (d.records && d.records.length > 0 ? d.records[d.records.length - 1].empathy : '')
+    : (d.empathy || '');
+  empathyEl.textContent   = empathyText;
+  empathyEl.style.display = empathyText ? 'block' : 'none';
 
   document.getElementById('modal-overlay').classList.add('open');
 }
 
 function buildModalSTF(d) {
+  /* 오늘 날짜: 여러 기록 목록으로 표시 */
+  if (d.is_today && d.records && d.records.length > 0) {
+    return d.records.map((r, i) => {
+      const time = r.recorded_at ? r.recorded_at.slice(11, 16) : '';
+      const em   = EMOTIONS[r.dominant] || { label: r.dominant, color: '#888' };
+      const row  = (badge, label, text) => text ? `
+        <div class="stf-modal-section">
+          <div class="stf-modal-label"><span class="stf-modal-badge">${badge}</span>${label}</div>
+          <div class="stf-modal-text">${text}</div>
+        </div>` : '';
+      return `
+        <div class="today-record-item">
+          <div class="today-record-header">
+            <span class="today-record-idx">${i + 1}번째 기록</span>
+            ${time ? `<span class="today-record-time">${time}</span>` : ''}
+            <span class="today-record-dom" style="background:${em.color}">${em.label}</span>
+          </div>
+          ${row('S', '상황', r.situation)}
+          ${row('T', '생각', r.thought)}
+          ${row('F', '감정', r.feeling)}
+        </div>`;
+    }).join('');
+  }
+
+  /* 과거 날짜: diary_text 또는 STF */
   if (d.situation || d.thought || d.feeling) {
     const row = (badge, label, text) => text ? `
       <div class="stf-modal-section">

@@ -1,28 +1,4 @@
-"""
-감정별 명상 가이드 8종
-각 감정에 최적화된 단계별 명상 스크립트와 확언(affirmation) 제공
-로컬 음원 5종(static/Meditation_Music/) 중 매 분석마다 랜덤 1개 선택
-"""
-
-import random
-
-# ── 로컬 음원 파일 목록 (파일명, 한글 레이블) ────────────────────────────────
-_MUSIC_FILES: list[tuple[str, str]] = [
-    ("Rain_On_Rooftop.mp3",                                                            "빗소리"),
-    ("594779__messyacousticapocalypse666__ambience-1-crickets-at-night.mp3",           "밤 풀벌레 소리"),
-    ("637563__kyles__forest-boreal-light-wind-breeze-through-leaves-close-loud-birds.mp3", "숲 속 바람 소리"),
-    ("729396__heckfricker__campfire-02.mp3",                                           "모닥불 소리"),
-    ("73723__akacie__autumn-forest-wind.mp3",                                          "가을 바람 소리"),
-]
-
-
-def _get_music() -> dict:
-    """5종 음원 중 랜덤 1개 반환."""
-    filename, label = random.choice(_MUSIC_FILES)
-    return {
-        "url":   f"/static/Meditation_Music/{filename}",
-        "title": label,
-    }
+"""감정별 명상 가이드 8종 — 단계별 스크립트와 확언(affirmation) 제공. 배경음악은 프론트에서 처리."""
 
 MEDITATIONS: dict[str, dict] = {
     "joy": {
@@ -172,7 +148,5 @@ MEDITATIONS: dict[str, dict] = {
 
 
 def get_meditation(emotion: str) -> dict:
-    """감정 키로 명상 가이드 + 랜덤 배경음악 반환. 없으면 neutral 반환."""
-    guide = dict(MEDITATIONS.get(emotion, MEDITATIONS["neutral"]))
-    guide["music"] = _get_music()
-    return guide
+    """감정 키로 명상 가이드 반환. 없으면 neutral 반환. 배경음악은 프론트에서 독자 처리."""
+    return dict(MEDITATIONS.get(emotion, MEDITATIONS["neutral"]))
