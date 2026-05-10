@@ -27,12 +27,12 @@ NLP_SCORE_TEMPLATE = {
 }
 
 EMOTION_SEARCH_QUERIES = {
-    "joy":        ["신나는 케이팝", "happy k-pop upbeat", "기쁜 노래"],
-    "excitement": ["설레는 노래 케이팝", "exciting k-pop", "두근두근 케이팝"],
-    "neutral":    ["잔잔한 케이팝", "chill k-pop acoustic", "편안한 노래"],
-    "surprise":   ["임팩트 케이팝", "fresh k-pop", "신선한 케이팝"],
-    "disgust":    ["답답할때 듣는 노래", "k-pop 스트레스", "위로 케이팝"],
-    "fear":       ["불안할때 듣는 노래", "calm soothing k-pop", "안정 케이팝"],
-    "sadness":    ["슬플때 듣는 노래", "sad k-pop ballad", "감성 발라드"],
-    "anger":      ["화날때 듣는 노래", "powerful k-pop", "강렬한 케이팝"],
+    "joy":        ["아이유 좋은날", "NewJeans Hype Boy", "BTS 봄날"],
+    "excitement": ["aespa Supernova", "ILLIT Magnetic", "TWICE Fancy"],
+    "neutral":    ["볼빨간사춘기 우주를 줄게", "폴킴 모든 날 모든 순간", "IU 밤편지"],
+    "surprise":   ["NewJeans OMG", "aespa Next Level", "SHINee 상사병"],
+    "disgust":    ["10cm 아메리카노", "이적 걱정말아요", "검정치마 Everything"],
+    "fear":       ["IU 이름에게", "폴킴 비", "적재 별 보러 가자"],
+    "sadness":    ["임영웅 이제 나만 믿어요", "폴킴 너였으면", "IU 잊어야 한다는 마음으로"],
+    "anger":      ["BTS DOPE", "BLACKPINK Pink Venom", "aespa Girls"],
 }

@@ -10,6 +10,24 @@ const EMOTIONS = {
   anger:      { label: '분노',   color: '#F09595' },
 };
 
+/* ─── 감정 이미지 매핑 ──────────────────────────────────────────── */
+const EMOTION_IMAGES = {
+  joy:        'happy.png',
+  excitement: 'excited.png',
+  neutral:    'neutral.png',
+  surprise:   'surprised.png',
+  disgust:    'disgust.png',
+  fear:       'fear.png',
+  sadness:    'sad.png',
+  anger:      'angry.png',
+};
+function _emotionImg(dominant, size = 24) {
+  const file = EMOTION_IMAGES[dominant];
+  if (!file) return '';
+  return `<img src="/static/emotions/emotions/${file}" width="${size}" height="${size}"
+               alt="${EMOTIONS[dominant]?.label || ''}" class="cal-emo-img">`;
+}
+
 /* ─── 명상 음악 파일 목록 (하드코딩) ──────────────────────────── */
 const MED_MUSIC_FILES = [
   { filename: 'Rain_On_Rooftop.mp3',
@@ -304,7 +322,7 @@ function renderResult(r) {
     <div class="slider-dots" id="slider-dots">${dots}</div>`;
 
   /* 자동 저장 완료 토스트 */
-  _showToast(`오늘 ${r.today_count || 1}번째 기록이 저장됐어요! 😊`);
+  _showToast(`오늘 ${r.today_count || 1}번째 기록이 저장됐어요.`);
 
   /* 바 애니메이션 */
   setTimeout(() => {
@@ -333,7 +351,7 @@ function startChat() {
   if (!container) return;
   container.innerHTML = '';
   /* 첫 인사말은 화면에만 표시 — API 히스토리에는 포함하지 않음 */
-  _appendBubble('ai', '안녕하세요! 😊 지금 무슨 일이 있나요?');
+  _appendBubble('ai', '안녕하세요! 지금 있었던 일을 편하게 얘기해줘요 :)');
 }
 
 /* ─── 대화형: 메시지 전송 ────────────────────────────────────────── */
@@ -456,7 +474,7 @@ function _showReadyButtons() {
   wrap.id        = 'chat-ready-actions';
   wrap.className = 'chat-ready-actions';
   wrap.innerHTML = `
-    <button class="chat-ready-btn primary" onclick="onClickRecord()">기록하기 📝</button>
+    <button class="chat-ready-btn primary" onclick="onClickRecord()">기록하기</button>
     <button class="chat-ready-btn secondary" onclick="onClickMoreTalk()">더 얘기할게</button>`;
   container.appendChild(wrap);
   container.scrollTop = container.scrollHeight;
@@ -477,7 +495,6 @@ async function onClickRecord() {
   const sendBtn = document.getElementById('chat-send-btn');
   if (sendBtn) sendBtn.disabled = true;
 
-  _appendBubble('ai', '그렇구나~ 잠깐만요 😊');
   const analyzeTypingId = _appendTyping();
   await _runAnalysisFromChat(situation, thought, feeling, analyzeTypingId);
 
@@ -514,7 +531,7 @@ async function _checkUnfinished() {
     const res  = await fetch('/api/check-unfinished');
     const data = await res.json();
     if (data.count > 0) {
-      _showToast(`📖 ${data.count}일치 일기가 자동으로 완성됐어요!`);
+      _showToast(`${data.count}일치 일기가 자동으로 완성됐어요.`);
     }
   } catch (e) {
     console.warn('[미완성 일기 체크] 오류:', e.message);
@@ -543,13 +560,13 @@ async function renderCalendar() {
     const key     = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     const rec     = records[key];
     const isToday = today.getFullYear() === calYear && today.getMonth() === calMonth && today.getDate() === d;
-    const dot     = rec ? `<div class="cal-dot" style="background:${EMOTIONS[rec.dominant]?.color || '#888'}"></div>` : '';
-    const click   = rec ? `onclick="openDiaryModal('${key}')"` : '';
-    html += `<div class="cal-cell${isToday ? ' today' : ''}${rec ? ' has-record' : ''}" ${click}>${d}${dot}</div>`;
+    const img   = rec ? _emotionImg(rec.dominant, 24) : '';
+    const click = rec ? `onclick="openDiaryModal('${key}')"` : '';
+    html += `<div class="cal-cell${isToday ? ' today' : ''}${rec ? ' has-record' : ''}" ${click}>${d}${img}</div>`;
   }
   document.getElementById('cal-grid').innerHTML = html;
-  document.getElementById('cal-legend').innerHTML = Object.entries(EMOTIONS).map(([, em]) =>
-    `<div class="leg-item"><div class="leg-dot" style="background:${em.color}"></div>${em.label}</div>`
+  document.getElementById('cal-legend').innerHTML = Object.entries(EMOTIONS).map(([k, em]) =>
+    `<div class="leg-item">${_emotionImg(k, 20)}${em.label}</div>`
   ).join('');
 }
 
