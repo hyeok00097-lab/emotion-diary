@@ -55,6 +55,7 @@ let currentMode   = 'chat';   // 'chat' | 'direct'
 let chatHistory   = [];       // [{role, content}, ...] — API 전달용 (첫 인사말 제외)
 let _typingCount  = 0;        // typing indicator ID 생성용
 let _pendingSTF   = null;     // ready:true 응답에서 받은 STF — 버튼 확인 대기 중
+let _currentModalDate = null; // 현재 열린 모달의 날짜
 
 /* ─── 초기화 ────────────────────────────────────────────────────── */
 function init() {
@@ -651,6 +652,7 @@ async function openDiaryModal(date) {
   const res = await fetch(`/api/diary/${date}`);
   if (!res.ok) return;
   const d  = await res.json();
+  _currentModalDate = date;
   const em = EMOTIONS[d.dominant] || { label: d.dominant, color: '#888' };
 
   document.getElementById('modal-date').textContent = date.replace(/-/g, '.');
@@ -714,6 +716,23 @@ function buildModalSTF(d) {
 function closeModal(e) {
   if (e.target === document.getElementById('modal-overlay'))
     document.getElementById('modal-overlay').classList.remove('open');
+}
+
+async function deleteDiary() {
+  if (!_currentModalDate) return;
+  const confirmed = confirm(`${_currentModalDate.replace(/-/g, '.')} 날의 기록을 모두 삭제할까요?`);
+  if (!confirmed) return;
+
+  try {
+    const res = await fetch(`/api/diary/${_currentModalDate}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error('삭제 실패');
+    document.getElementById('modal-overlay').classList.remove('open');
+    _currentModalDate = null;
+    renderCalendar();
+    _showToast('기록이 삭제됐어요.');
+  } catch (e) {
+    alert('삭제 중 오류가 발생했어요. 다시 시도해주세요.');
+  }
 }
 
 /* ─── 명상 배경음악 + 타이머 ────────────────────────────────────── */

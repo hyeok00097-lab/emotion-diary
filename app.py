@@ -8,7 +8,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from database import init_db, save_emotion, save_training_sample, \
     get_calendar_data, get_diary_detail, get_weekly_records, \
     get_unfinished_dates, get_records_by_date, save_daily_diary, get_today_count, \
-    get_weekly_diaries
+    get_weekly_diaries, delete_diary
 from emotions import NLP_SCORE_TEMPLATE
 from nlp import koelectra_classify
 from llm import llm_only_analyze, llm_review_and_generate, get_book_recommendation, \
@@ -232,6 +232,15 @@ def diary_detail(date):
     return jsonify(record)
 
 
+@app.route("/api/diary/<string:date>", methods=["DELETE"])
+def diary_delete(date):
+    try:
+        delete_diary(date)
+        return jsonify({"status": "ok", "date": date})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/stats/weekly")
 def weekly_stats():
     # 차트용: 오늘 포함 7일 (emotions + daily_diary 혼합)
@@ -241,7 +250,7 @@ def weekly_stats():
     # 도서 추천용: daily_diary 완성 일기만 (오늘 제외)
     diaries   = get_weekly_diaries(days=7)
     book_info = None
-    if len(diaries) >= 7:
+    if len(diaries) >= 1:
         book_info = get_book_recommendation(diaries)
 
     return jsonify({

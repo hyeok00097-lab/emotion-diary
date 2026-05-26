@@ -452,6 +452,27 @@ textarea::placeholder { font-family: 'Noto Sans KR', sans-serif; color: #C5C4BC;
   border-radius: 10px; border-left: 3px solid #AFA9EC;
 }
 
+/* ─── Modal Delete Button ───────────────────────────────────────── */
+.btn-delete-diary {
+  display: block;
+  width: 100%;
+  margin-top: 1rem;
+  padding: 9px 0;
+  font-size: 13px;
+  font-family: 'Noto Sans KR', sans-serif;
+  font-weight: 500;
+  color: #C0392B;
+  background: none;
+  border: 1px solid #E8B4B0;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.btn-delete-diary:hover {
+  background: #FFF0EE;
+  border-color: #C0392B;
+}
+
 /* ─── Empty State ───────────────────────────────────────────────── */
 .empty-state {
   text-align: center; padding: 4rem 1rem;

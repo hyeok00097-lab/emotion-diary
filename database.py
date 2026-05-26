@@ -413,6 +413,22 @@ def save_training_sample(diary_text: str, nlp_dominant: str,
         conn.close()
 
 
+def delete_diary(date: str) -> None:
+    """해당 날짜의 모든 기록 삭제 — emotions + daily_diary (둘 중 하나만 있어도 정상 처리)."""
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        conn.execute("DELETE FROM emotions WHERE date = ?", (date,))
+        conn.execute("DELETE FROM daily_diary WHERE date = ?", (date,))
+        conn.commit()
+        print(f"[DB] {date} 기록 삭제 완료")
+    except Exception as e:
+        conn.rollback()
+        print(f"[DB] {date} 기록 삭제 실패: {e}")
+        raise
+    finally:
+        conn.close()
+
+
 def get_recent_emotion_history(days: int = 7) -> str:
     """최근 N일 감정 기록을 텍스트로 반환 (LLM 컨텍스트용)."""
     conn  = sqlite3.connect(DB_PATH)
